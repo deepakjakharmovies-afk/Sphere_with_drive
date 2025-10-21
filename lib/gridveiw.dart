@@ -39,29 +39,57 @@ class _PhotoGridScreenState extends State<PhotoGridScreen> {
   }
 
   Future<void> _uploadPhoto() async {
-    final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+    // 1. Use pickMultiImage() to allow selecting multiple files from the gallery
+    final List<XFile> images = await _picker.pickMultiImage();
 
-    if (image != null) {
+    if (images.isNotEmpty) {
       final driveService = Provider.of<DriveService>(context, listen: false);
+
+      // Show a loading dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return const AlertDialog(
+            content: Row(
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(width: 15),
+                Text("Uploading photos..."),
+              ],
+            ),
+          );
+        },
+      );
+
+      int successfulUploads = 0;
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Uploading ${image.name}...')),
-      );
+      // 2. Loop through each selected image and upload it
+      for (var image in images) {
+        // ARGUMENT ORDER FIX: Must pass String (sphereId) first, then File (imageFile).
+        final success = await driveService.uploadPhoto(
+          widget.sphere.id, // String (sphereId)
+          File(image.path), // File (imageFile)
+        );
 
-      final success = await driveService.uploadPhoto(
-        widget.sphere.id,
-        File(image.path),
-      );
+        if (success) {
+          successfulUploads++;
+        }
+      }
 
-      if (success) {
-        // Refresh the grid to show the new photo
-        await _fetchPhotos();
+      // Close the loading dialog
+      Navigator.pop(context);
+
+      // 3. Provide feedback based on results
+      if (successfulUploads > 0) {
+        // Refresh the grid once after all uploads are complete
+        await _fetchPhotos(); 
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Upload successful!')),
+          SnackBar(content: Text('$successfulUploads photo(s) uploaded successfully!')),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Upload failed.')),
+          const SnackBar(content: Text('No photos were uploaded.')),
         );
       }
     }

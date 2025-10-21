@@ -1,3 +1,4 @@
+import 'package:app/loadingfile.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
@@ -28,10 +29,14 @@ class AuthWrapper extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<AuthService>(
       builder: (context, authService, _) {
-        // If we have an authenticated GoogleHttpClient (Drive access)
+        // If AuthService provides a loading/checking flag, use it to show a loading screen:
+        // if (authService.isChecking) {
+        //   return const BouncingBallLoadingScreen();
+        // }
+
         if (authService.isAuthenticated) {
           return const HomeScreen();
-        } 
+        }
         
         // Otherwise, show the login screen
         return const LoginScreen();
@@ -70,7 +75,7 @@ class SnapSphereApp extends StatelessWidget {
             enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12)), borderSide: BorderSide(color: Colors.grey, width: 1)),
           )
         ),
-        home: const AuthWrapper(),
+        home: const BouncingBallLoadingScreen(),
       ),
     );
   }

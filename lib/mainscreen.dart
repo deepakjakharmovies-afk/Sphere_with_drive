@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:app/auth_service.dart';
 import 'package:app/drive_service.dart';
-import 'package:app/models.dart';
 import 'package:app/gridveiw.dart'; // Retained for navigation
 
 // The data models are now in models.dart, so we'll remove the local Trip class
@@ -37,7 +36,7 @@ class HomeScreen extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           // spacing:,
           children: [
-            FloatingActionButton(onPressed: (){},
+            FloatingActionButton(onPressed: () => _joinShereDialog(context),
             child: const Icon(Icons.group_sharp),),
             FloatingActionButton(
               onPressed: () => _showCreateSphereDialog(context),
@@ -54,7 +53,12 @@ class HomeScreen extends StatelessWidget {
       // child: const Icon(Icon.join),),
     );
   }
-
+  void _joinShereDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => const joinShereDialog(),
+    );
+  }
   void _showCreateSphereDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -62,7 +66,72 @@ class HomeScreen extends StatelessWidget {
     );
   }
 }
+ final link = TextEditingController();
 
+class joinShereDialog extends StatelessWidget {
+  const joinShereDialog({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text("Join a Sphere"),
+      content: TextField(
+        controller: link,
+        decoration: const InputDecoration(
+          labelText: 'Enter Sphere Code',
+          
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            
+            // final link  = TextEditingController().text;
+            Provider.of<DriveService>(context, listen: false).joinSphereFromLink(link.text);
+            Navigator.pop(context);
+          },
+          child: const Text('Join'),
+        ),
+      ],
+    );
+  }
+}
+class CreateLinkDiloge extends StatefulWidget {
+  final String? link;
+  const CreateLinkDiloge.CreateLinkDialog({super.key,this.link});
+
+  @override
+  State<CreateLinkDiloge> createState() => _CreateLinkDilogeState();
+}
+void _whattodo(BuildContext context,String folderId) {
+    showDialog(
+      context: context,
+      builder: (ctx) => WhatTOdo(folderId: folderId),
+    );
+  }
+void _showlinkShareableLinkDialog(BuildContext context,String? link) {
+    showDialog(
+      context: context,
+      builder: (ctx) => CreateLinkDiloge.CreateLinkDialog(link: link),
+    );
+  }
+class _CreateLinkDilogeState extends State<CreateLinkDiloge> {
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text("shareable Link"),
+      content: SelectableText(widget.link.toString() ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: Text("Close"))
+      ],
+    );
+  }
+}
 // --- 2. List View of Spheres (Drive Folders) ---
 
 class SphereListView extends StatelessWidget {
@@ -87,7 +156,16 @@ class SphereListView extends StatelessWidget {
       itemBuilder: (context, index) {
         final sphere = driveService.spheres[index];
         return GestureDetector(
-          onLongPress: () => ScaffoldMessenger(child: SnackBar(content: Text("long pressed ${sphere.name}"))),
+          onLongPress: () => _whattodo(context,sphere.id), // Delete sphere on long press
+          //   if (link != null) {
+          //     _showlinkShareableLinkDialog(context,link);
+          //   } else {
+          //     ScaffoldMessenger.of(context).showSnackBar(
+          //       const SnackBar(content: Text('Failed to create shareable link.')),
+          //     );
+          //   }
+          // }
+          
           child: Card(
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: ListTile(
@@ -108,6 +186,38 @@ class SphereListView extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class WhatTOdo extends StatelessWidget {
+  final String folderId;
+  const WhatTOdo({super.key,required this.folderId});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text("What do you want to do?"),
+      content: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          ElevatedButton(onPressed:()async{
+            final link = await Provider.of<DriveService>(context, listen: false).createShareableLink(folderId);
+            if (link != null) {
+              _showlinkShareableLinkDialog(context,link);
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Failed to create shareable link.')),
+              );
+            }
+
+          }, child: Text("link")),
+          ElevatedButton(onPressed:(){ Provider.of<DriveService>(context, listen: false).deleteFolder(folderId);
+          Navigator.pop(context);} ,child: Text("delete"))
+          // fatchspheres(,
+          
+        ],
+      ),
     );
   }
 }

@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
@@ -7,7 +6,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:app/auth_service.dart';
 import 'package:app/models.dart';
-import 'package:http/http.dart' as http;
 
 class DriveService with ChangeNotifier {
   final AuthService _authService;
@@ -55,6 +53,49 @@ class DriveService with ChangeNotifier {
     await fetchSpheres();
   }
 
+  // Create a shareable view-only link for a file/sphere
+Future<String?> createShareableLink(String fileId) async {
+    try {
+      await _driveApi!.permissions.create(
+        drive.Permission.fromJson({
+          "role": "writer", // allow editing
+          "type": "anyone", 
+          "allowFileDiscovery": false,// anyone with link
+        }),
+        fileId,
+      );
+
+      final file = await _driveApi!.files.get(fileId, $fields: 'webViewLink');
+      return (file as drive.File).webViewLink;
+    } catch (e) {
+      print('Error creating shareable link: $e');
+      return null;
+    }
+  }
+
+// ---- DELETE FILE ----
+Future<void> deleteFile(String fileId) async {
+  try {
+    await _driveApi!.files.delete(fileId);
+    print( _spheres.where((sphere) => sphere.id == fileId));
+
+    print('Deleted: $fileId');
+  } catch (e) {
+    print('Error deleting file: $e');
+  }
+}
+   Future<void> deleteFolder(String folderId) async {
+    try {
+      // The `files.delete` method requires the ID of the file or folder to delete.
+       _driveApi!.files.delete(folderId);
+       
+       
+    } catch (e) {
+      print('Error deleting folder: $e');
+    }
+  }
+
+
   /// Ensures the main "SnapSphere Photos" folder exists in the user's Drive.
   Future<void> _ensureRootFolderExists() async {
     if (_driveApi == null || _snapSphereRootId != null) return;
@@ -95,12 +136,12 @@ class DriveService with ChangeNotifier {
 
     try {
       // Query for all folders (Spheres) inside the root folder
+      // final fileList = await _driveApi!.files.list(
       final fileList = await _driveApi!.files.list(
-        q: "mimeType='application/vnd.google-apps.folder' and '${_snapSphereRootId}' in parents and trashed=false",
+        q: "mimeType='application/vnd.google-apps.folder' and '$_snapSphereRootId' in parents and trashed=false",
         spaces: 'drive',
         $fields: 'files(id, name, createdTime, owners)',
       );
-
       _spheres = fileList.files
               ?.map((file) => Sphere(
                     id: file.id!,
@@ -121,6 +162,58 @@ class DriveService with ChangeNotifier {
       notifyListeners();
     }
   }
+ Future<drive.File?> joinSphereFromLink(String link) async {
+  try {
+    // Extract the folder ID (handles both folder & file links)
+    final RegExp regExp = RegExp(r'[-\w]{25,}');
+    final match = regExp.firstMatch(link);
+    if (match == null) throw Exception('Invalid Google Drive link');
+
+    final fileId = match.group(0)!;
+
+    // Try to fetch it normally
+    try {
+      final file = await _driveApi!.files.get(
+        fileId,
+        $fields: 'id,name,mimeType,webViewLink',
+      );
+      // print('✅ Joined sphere: ${file.name}');
+      return file as drive.File;
+    } on drive.DetailedApiRequestError catch (e) {
+      if (e.status == 404) {
+        print('⚠️ File not found. Trying to fix permissions...');
+      } else {
+        rethrow;
+      }
+    }
+
+    // If it failed (404), attempt to create a public permission
+    try {
+      await _driveApi!.permissions.create(
+        drive.Permission.fromJson({
+          'type': 'anyone',
+          'role': 'reader', // or 'writer' if you want uploads
+        }),
+        fileId,
+      );
+      print('🔓 Made folder public, retrying...');
+
+      final file = await _driveApi!.files.get(
+        fileId,
+        $fields: 'id,name,mimeType,webViewLink',
+      );
+      // print('✅ Joined after making public: ${file.name}');
+      return file as drive.File;
+    } catch (e) {
+      print('❌ Could not make folder public: $e');
+      rethrow;
+    }
+  } catch (e) {
+    print('Error joining sphere: $e');
+    return null;
+  }
+}
+
 
   Future<bool> createSphere(String name) async {
     if (_driveApi == null || _snapSphereRootId == null) return false;
@@ -133,13 +226,15 @@ class DriveService with ChangeNotifier {
       folder.mimeType = 'application/vnd.google-apps.folder';
       folder.parents = [_snapSphereRootId!]; // Put inside the root folder
 
-      final createdFolder = await _driveApi!.files.create(folder);
+      // final createdFolder = await _driveApi!.files.create(folder);
+      await _driveApi!.files.create(folder);
       
       // Refresh the list
       await fetchSpheres();
       return true;
+      
+      //ignore: dead_code
     } catch (e) {
-      print('Error creating sphere: $e');
       _authService.setError('Failed to create new photo album.');
       return false;
     } finally {
@@ -154,13 +249,13 @@ class DriveService with ChangeNotifier {
     if (_driveApi == null) return [];
 
     try {
+      // final fileList = await _driveApi!.files.list(
       final fileList = await _driveApi!.files.list(
-        q: "mimeType contains 'image/' and '${sphereId}' in parents and trashed=false",
+        q: "mimeType contains 'image/' and '$sphereId' in parents and trashed=false",
         spaces: 'drive',
         $fields:
             'files(id, name, mimeType, webContentLink, imageMediaMetadata, thumbnailLink)',
       );
-
       return fileList.files
               ?.map((file) => DriveFile.fromGoogleApi(
                     file.id!,
